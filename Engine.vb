@@ -92,6 +92,11 @@ Module Engine
         rpcblock = blockcount.result
         Console.WriteLine("STATUS: Network is at block " & rpcblock.ToString)
 
+        If rpcblock < dbposition Then
+            Console.WriteLine("ERROR: Database block appears newer than bitcoinrpc blocks - is bitcoinrpc up to date? Exiting thread.")
+            End
+        End If
+
         'calculate catchup
         Dim catchup As Integer
         catchup = rpcblock - dbposition
