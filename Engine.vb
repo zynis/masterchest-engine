@@ -140,6 +140,25 @@ Module Engine
             Dim dbwrite3 As Integer = SQLGetSingleVal("INSERT INTO processedblocks VALUES (" & blocknum & "," & block.result.time & ")")
         Next
 
+        'handle unconfirmed transactions
+        If debuglevel > 0 Then Console.WriteLine("DEBUG: Block Analysis for pending transactions")
+        Dim btemplate As blocktemplate = mlib.getblocktemplate(bitcoin_con)
+        Dim intermedarray As bttx() = btemplate.result.transactions.ToArray
+        For j = 1 To UBound(intermedarray) 'skip tx0 which should be coinbase
+            Try
+                If mlib.ismastercointx(bitcoin_con, intermedarray(j).hash) = True Then
+                    Console.WriteLine("BLOCKSCAN: Found MSC transaction: " & intermedarray(j).hash)
+                    Dim results As txn = mlib.gettransaction(bitcoin_con, intermedarray(j).hash)
+                    'decode mastercoin transaction
+                    Dim txdetails As mastercointx = mlib.getmastercointransaction(bitcoin_con, intermedarray(j).hash.ToString, "send")
+                    'see if we have a transaction back and if so write it to database
+                    If Not IsNothing(txdetails) Then Dim dbwrite2 As Integer = SQLGetSingleVal("INSERT INTO transactions (TXID,FROMADD,TOADD,VALUE,TYPE,BLOCKTIME,BLOCKNUM,VALID,CURTYPE) VALUES ('" & txdetails.txid & "','" & txdetails.fromadd & "','" & txdetails.toadd & "'," & txdetails.value & ",'" & txdetails.type & "'," & txdetails.blocktime & "," & 999999 & "," & txdetails.valid & "," & txdetails.curtype & ")")
+                End If
+            Catch exx As Exception
+                Console.WriteLine("ERROR: Exception occured looking at unconfirmed transactions." & vbCrLf & exx.Message & vbCrLf & "Exiting...")
+            End Try
+        Next
+
         'finished scanning, next process transactions
         processtx()
 
@@ -208,14 +227,26 @@ Module Engine
                                 sqlquery = "SELECT ADDRESS FROM balances where ADDRESS='" & .Item(2).ToString & "'"
                                 cmd.CommandText = sqlquery
                                 returnval = cmd.ExecuteScalar
-                                If returnval = .Item(2).ToString Then
-                                    If curtype = 1 Then cmd.CommandText = "UPDATE balances SET CBALANCE=CBALANCE+" & txamount & " where ADDRESS='" & .Item(2).ToString & "'"
-                                    If curtype = 2 Then cmd.CommandText = "UPDATE balances SET CBALANCET=CBALANCET+" & txamount & " where ADDRESS='" & .Item(2).ToString & "'"
-                                    returnval = cmd.ExecuteScalar
+                                If .Item(6) < 999998 Then
+                                    If returnval = .Item(2).ToString Then
+                                        If curtype = 1 Then cmd.CommandText = "UPDATE balances SET CBALANCE=CBALANCE+" & txamount & " where ADDRESS='" & .Item(2).ToString & "'"
+                                        If curtype = 2 Then cmd.CommandText = "UPDATE balances SET CBALANCET=CBALANCET+" & txamount & " where ADDRESS='" & .Item(2).ToString & "'"
+                                        returnval = cmd.ExecuteScalar
+                                    Else
+                                        If curtype = 1 Then cmd.CommandText = "INSERT INTO balances (ADDRESS,CBALANCE,CBALANCET, UBALANCE,UBALANCET) VALUES ('" & .Item(2).ToString & "'," & txamount & ",0,0,0)"
+                                        If curtype = 2 Then cmd.CommandText = "INSERT INTO balances (ADDRESS,CBALANCE,CBALANCET, UBALANCE,UBALANCET) VALUES ('" & .Item(2).ToString & "',0," & txamount & ",0,0)"
+                                        returnval = cmd.ExecuteScalar
+                                    End If
                                 Else
-                                    If curtype = 1 Then cmd.CommandText = "INSERT INTO balances (ADDRESS,CBALANCE,CBALANCET) VALUES ('" & .Item(2).ToString & "'," & txamount & ",0)"
-                                    If curtype = 2 Then cmd.CommandText = "INSERT INTO balances (ADDRESS,CBALANCE,CBALANCET) VALUES ('" & .Item(2).ToString & "',0," & txamount & ")"
-                                    returnval = cmd.ExecuteScalar
+                                    If returnval = .Item(2).ToString Then
+                                        If curtype = 1 Then cmd.CommandText = "UPDATE balances SET UBALANCE=UBALANCE+" & txamount & " where ADDRESS='" & .Item(2).ToString & "'"
+                                        If curtype = 2 Then cmd.CommandText = "UPDATE balances SET UBALANCET=UBALANCET+" & txamount & " where ADDRESS='" & .Item(2).ToString & "'"
+                                        returnval = cmd.ExecuteScalar
+                                    Else
+                                        If curtype = 1 Then cmd.CommandText = "INSERT INTO balances (ADDRESS,CBALANCE,CBALANCET, UBALANCE,UBALANCET) VALUES ('" & .Item(2).ToString & "',0,0," & txamount & ",0)"
+                                        If curtype = 2 Then cmd.CommandText = "INSERT INTO balances (ADDRESS,CBALANCE,CBALANCET, UBALANCE,UBALANCET) VALUES ('" & .Item(2).ToString & "',0,0,0," & txamount & ")"
+                                        returnval = cmd.ExecuteScalar
+                                    End If
                                 End If
                             Else 'transaction not valid
                                 cmd.CommandText = "INSERT INTO transactions_processed VALUES ('" & .Item(0).ToString & "','" & .Item(1).ToString & "','" & .Item(2).ToString & "'," & .Item(3).ToString & ",'" & .Item(4).ToString & "'," & .Item(5).ToString & "," & .Item(6).ToString & ",0," & .Item(8).ToString & ")"
