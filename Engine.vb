@@ -215,7 +215,7 @@ Module Engine
                             cmd.CommandText = sqlquery
                             returnval = cmd.ExecuteScalar
                             'check if transaction amount is over senders balance
-                            If returnval > txamount Then 'ok
+                            If returnval >= txamount Then 'ok
                                 cmd.CommandText = "INSERT INTO transactions_processed VALUES ('" & .Item(0).ToString & "','" & .Item(1).ToString & "','" & .Item(2).ToString & "'," & .Item(3).ToString & ",'" & .Item(4).ToString & "'," & .Item(5).ToString & "," & .Item(6).ToString & ",1," & .Item(8).ToString & ")"
                                 returnval = cmd.ExecuteScalar
                                 'subtract balances accordingly
